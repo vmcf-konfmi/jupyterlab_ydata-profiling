@@ -1,4 +1,4 @@
-version: '3.8'
+version: '3.9'
 
 services:
   jupyterlab-ydata:
@@ -7,3 +7,6 @@ services:
       - "8888:8888"
     volumes:
       - ./notebooks:/home/jovyan/work
+    environment:
+      JUPYTER_ENABLE_LAB: "yes"
+      command: "start-notebook.sh --NotebookApp.token='' --NotebookApp.password='password'"

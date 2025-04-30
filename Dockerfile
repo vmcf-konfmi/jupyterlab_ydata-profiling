@@ -1,14 +1,65 @@
-FROM jupyter/scipy-notebook:latest
+# Copyright (c) Jupyter Development Team.
+# Distributed under the terms of the Modified BSD License.
+ARG REGISTRY=quay.io
+ARG OWNER=jupyter
+ARG BASE_CONTAINER=$REGISTRY/$OWNER/minimal-notebook
+FROM $BASE_CONTAINER
 
-# Install ydata-profiling and clean up pip cache
-RUN pip install ydata-profiling black isort jupyterlab_code_formatter && pip cache purge
+LABEL maintainer="Jupyter Project <jupyter@googlegroups.com>"
 
-# Set the working directory inside the container
-WORKDIR /home/jovyan/work
+# Fix: https://github.com/hadolint/hadolint/wiki/DL4006
+# Fix: https://github.com/koalaman/shellcheck/wiki/SC3014
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-# Expose the JupyterLab port
-EXPOSE 8888
+USER root
 
-# Start JupyterLab when the container runs
-# Potentialy get token from environment variable in future
-CMD ["jupyter", "lab", "--ip=0.0.0.0", "--port=8888", "--no-browser", "--allow-root", "--NotebookApp.token=your-token"]]
+RUN apt-get update --yes && \
+    apt-get install --yes --no-install-recommends \
+    # for cython: https://cython.readthedocs.io/en/latest/src/quickstart/install.html
+    build-essential \
+    # for latex labels
+    cm-super \
+    dvipng \
+    # for matplotlib anim
+    ffmpeg && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+USER ${NB_UID}
+
+# Install Python 3 packages + jupyterlab_code_formatter black isort
+RUN mamba install --yes \
+    'altair' \
+    'bokeh' \
+    'ipywidgets' \
+    'jupyterlab-git' \
+    'matplotlib-base' \
+    'pandas' \
+    'scipy' \
+    'seaborn' \
+    'statsmodels' \
+    'jupyterlab_code_formatter' \
+    'black' \
+    'isort' \
+    'widgetsnbextension' && \
+    mamba clean --all -f -y && \
+    fix-permissions "${CONDA_DIR}" && \
+    fix-permissions "/home/${NB_USER}"
+
+# Install the pip packages
+RUN pip install watermark statannotations ydata-profiling --no-cache-dir
+
+# Install facets package which does not have a `pip` or `conda-forge` package at the moment
+WORKDIR /tmp
+RUN git clone https://github.com/PAIR-code/facets && \
+    jupyter nbclassic-extension install facets/facets-dist/ --sys-prefix && \
+    rm -rf /tmp/facets && \
+    fix-permissions "${CONDA_DIR}" && \
+    fix-permissions "/home/${NB_USER}"
+
+# Import matplotlib the first time to build the font cache
+RUN MPLBACKEND=Agg python -c "import matplotlib.pyplot" && \
+    fix-permissions "/home/${NB_USER}"
+
+USER ${NB_UID}
+
+WORKDIR "${HOME}"
